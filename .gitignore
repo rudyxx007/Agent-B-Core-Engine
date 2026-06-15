@@ -1,1 +1,32 @@
+# =============================================================
+# AGENT-B: Git Ignore Rules
+# =============================================================
+
+# --- Sensitive Files (NEVER commit) ---
+.env
+Supabase Password.txt
+
+# --- Project Documentation (Private) ---
 SYSTEM INITIALIZATION PROMPT PROJECT AGENT-B.md
+Future Works.txt
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS ---
+Thumbs.db
+.DS_Store

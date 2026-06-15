@@ -1,0 +1,12 @@
+# =============================================================
+# AGENT-B: Phase 1 Python Dependencies
+# =============================================================
+# Install with:  pip install -r requirements.txt
+#
+# What each package does:
+#   supabase       - Official Supabase Python client (talks to your DB via REST API)
+#   python-dotenv  - Loads .env file variables into os.environ so Python can read them
+# =============================================================
+
+supabase>=2.15.0
+python-dotenv>=1.1.0
