@@ -1,5 +1,5 @@
 """
-scripts/generate_training_data.py — Generate the Historical Training CSV
+scripts/generate_training_data.py — Generate the Historical Training CSV (v2)
 
 PURPOSE:
     Downloads all required data from their respective sources, computes
@@ -8,21 +8,23 @@ PURPOSE:
 
 DATA SOURCES:
     - BZ=F (Brent Crude Futures) -- yfinance (from 2007-07-30)
-    - DX-Y.NYB (DXY / US Dollar Index) -- yfinance (from 1971)
-    - DNSI (Daily News Sentiment Index) -- SF Fed via FRED API
+    - CL=F (WTI Crude Futures) -- yfinance (for Brent-WTI spread)
+    - RB=F (RBOB Gasoline) -- yfinance (for crack spread)
+    - HO=F (Heating Oil/Diesel proxy) -- yfinance (for crack spread)
+    - DX-Y.NYB (DXY / US Dollar Index) -- yfinance
+    - VIXCLS (VIX as sentiment proxy) -- FRED API
+    - WCESTUS1 (Weekly Crude Inventories) -- EIA API v2
     - Holidays -- 'holidays' Python library
 
 OUTPUT:
     data/historical_features.csv — One row per trading day with columns:
-        date, brent_close, brent_high, brent_low, brent_volume,
-        dxy_close, holiday_flag, sentiment_score,
-        z_brent, z_dxy,
-        rsi_14, macd, macd_signal, bb_upper, bb_lower, bb_mid
+        date, brent_close, ..., brent_wti_spread, crack_spread_321,
+        eia_inventory, eia_inventory_change, z_brent, z_dxy, ...
 
 USAGE:
     python scripts/generate_training_data.py
 
-RUNTIME: ~1-2 minutes (mostly downloading from yfinance)
+RUNTIME: ~2-3 minutes (mostly downloading from yfinance + EIA)
 """
 
 import sys
@@ -34,6 +36,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pandas as pd
 import numpy as np
 import yfinance as yf
+import requests
 from datetime import datetime
 from pathlib import Path
 
@@ -67,8 +70,20 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 OUTPUT_CSV = DATA_DIR / "historical_features.csv"
 SCALER_JSON = DATA_DIR / "scaler_params.json"
 
-# FRED API key from .env
+# API keys from .env
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
+EIA_API_KEY = os.getenv("EIA_API_KEY", "")
+
+def _load_env_key(key_name: str) -> str:
+    """Try to load an API key from .env file."""
+    env_path = Path(__file__).parent.parent / ".env"
+    if env_path.exists():
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(f"{key_name}="):
+                    return line.split("=", 1)[1].strip()
+    return ""
 
 
 # ============================================================
@@ -77,7 +92,7 @@ FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 
 def download_brent() -> pd.DataFrame:
     """Download BZ=F daily OHLCV from yfinance."""
-    print("\n[1/6] Downloading BZ=F (Brent Crude Futures)...")
+    print("\n[1/9] Downloading BZ=F (Brent Crude Futures)...")
 
     df = yf.download("BZ=F", start=START_DATE, end=END_DATE, progress=True)
 
@@ -108,7 +123,7 @@ def download_brent() -> pd.DataFrame:
 
 def download_dxy() -> pd.DataFrame:
     """Download DX-Y.NYB daily close from yfinance."""
-    print("\n[2/6] Downloading DX-Y.NYB (US Dollar Index / DXY)...")
+    print("\n[2/9] Downloading DX-Y.NYB (US Dollar Index / DXY)...")
 
     df = yf.download("DX-Y.NYB", start=START_DATE, end=END_DATE, progress=True)
 
@@ -129,34 +144,65 @@ def download_dxy() -> pd.DataFrame:
 
 
 # ============================================================
-# STEP 3: Download Sentiment (SF Fed DNSI via FRED API)
+# STEP 3: Download WTI + Products (for spreads & crack spread)
 # ============================================================
 
-def download_sentiment() -> pd.DataFrame:
-    """Download DNSI from FRED and normalize to [-1, +1]."""
-    print("\n[3/6] Downloading DNSI (Daily News Sentiment Index)...")
+def download_wti_and_products() -> pd.DataFrame:
+    """Download CL=F (WTI), RB=F (Gasoline), HO=F (Heating Oil/Diesel)."""
+    print("\n[3/9] Downloading WTI, Gasoline, Heating Oil futures...")
 
-    if not FRED_API_KEY:
-        # Try loading from .env file manually
-        env_path = Path(__file__).parent.parent / ".env"
-        if env_path.exists():
-            with open(env_path, encoding="utf-8") as f:
-                for line in f:
-                    if line.startswith("FRED_API_KEY="):
-                        key = line.strip().split("=", 1)[1]
-                        if key:
-                            return _download_sentiment_with_key(key)
+    tickers = {
+        "CL=F": "wti_close",
+        "RB=F": "gasoline_close",   # $/gallon
+        "HO=F": "heating_oil_close",  # $/gallon (diesel proxy)
+    }
 
-        print("  WARNING: No FRED_API_KEY found. Generating synthetic sentiment placeholder.")
-        print("  To fix: add FRED_API_KEY=your_key to .env file")
-        print("  Get a free key at: https://fred.stlouisfed.org/docs/api/api_key.html")
-        return _generate_placeholder_sentiment()
+    frames = []
+    for ticker, col_name in tickers.items():
+        df = yf.download(ticker, start=START_DATE, end=END_DATE, progress=True)
+        if df.empty:
+            print(f"  WARNING: {ticker} returned no data!")
+            continue
 
-    return _download_sentiment_with_key(FRED_API_KEY)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        df = df[["Close"]].copy()
+        df.columns = [col_name]
+        df = df.dropna()
+        frames.append(df)
+        print(f"  {ticker} ({col_name}): {len(df)} rows")
+
+    if not frames:
+        raise RuntimeError("Failed to download WTI/product futures data")
+
+    # Join all on date index
+    result = frames[0]
+    for f in frames[1:]:
+        result = result.join(f, how="outer")
+
+    return result
 
 
-def _download_sentiment_with_key(api_key: str) -> pd.DataFrame:
-    """Download DNSI using FRED API."""
+# ============================================================
+# STEP 4A: Download VIX (Fear Gauge via FRED API)
+# ============================================================
+
+def download_vix() -> pd.DataFrame:
+    """Download VIX from FRED (now used as an independent feature, not a proxy)."""
+    print("\n[4/10] Downloading VIX (Fear Gauge via FRED)...")
+
+    api_key = FRED_API_KEY or _load_env_key("FRED_API_KEY")
+
+    if not api_key:
+        print("  WARNING: No FRED_API_KEY found. Generating synthetic VIX placeholder.")
+        return _generate_placeholder_vix()
+
+    return _download_vix_with_key(api_key)
+
+
+def _download_vix_with_key(api_key: str) -> pd.DataFrame:
+    """Download VIX using FRED API."""
     try:
         from fredapi import Fred
     except ImportError:
@@ -165,73 +211,145 @@ def _download_sentiment_with_key(api_key: str) -> pd.DataFrame:
         from fredapi import Fred
 
     fred = Fred(api_key=api_key)
+    series_id = "VIXCLS"
+    try:
+        data = fred.get_series(series_id, observation_start=START_DATE, observation_end=END_DATE)
+        if data is not None and len(data) > 100:
+            df = pd.DataFrame({"vix_close": data})
+            df.index.name = "Date"
+            df = df.dropna()
+            print(f"  Downloaded {len(df)} rows of VIX")
+            return df[["vix_close"]]
+    except Exception as e:
+        print(f"  VIX download failed: {e}")
 
-    # VIXCLS is the CBOE Volatility Index — we use this as a readily available
-    # daily sentiment proxy since DNSI may not be available via standard FRED API.
-    # Try DNSI first (series may be named differently on FRED).
-    series_to_try = [
-        ("NEWSENTWRD", "Daily News Sentiment Index"),
-        ("VIXCLS", "CBOE Volatility Index (VIX) -- used as fear/greed proxy"),
-    ]
-
-    for series_id, description in series_to_try:
-        try:
-            print(f"  Trying FRED series: {series_id} ({description})...")
-            data = fred.get_series(series_id, observation_start=START_DATE, observation_end=END_DATE)
-            if data is not None and len(data) > 100:
-                df = pd.DataFrame({"raw_sentiment": data})
-                df.index.name = "Date"
-                df = df.dropna()
-
-                # Normalize to [-1, +1] using Min-Max scaling
-                s_min = df["raw_sentiment"].min()
-                s_max = df["raw_sentiment"].max()
-                if s_max > s_min:
-                    df["sentiment_score"] = -1.0 + 2.0 * (df["raw_sentiment"] - s_min) / (s_max - s_min)
-                else:
-                    df["sentiment_score"] = 0.0
-
-                # If using VIX, INVERT it — high VIX = negative sentiment
-                if series_id == "VIXCLS":
-                    df["sentiment_score"] = -df["sentiment_score"]
-
-                print(f"  Downloaded {len(df)} rows from {series_id}")
-                print(f"  Raw range: {s_min:.4f} to {s_max:.4f}")
-                print(f"  Normalized range: {df['sentiment_score'].min():.4f} to {df['sentiment_score'].max():.4f}")
-
-                return df[["sentiment_score"]]
-        except Exception as e:
-            print(f"  {series_id} failed: {e}")
-            continue
-
-    print("  All FRED series failed. Using placeholder sentiment.")
-    return _generate_placeholder_sentiment()
+    return _generate_placeholder_vix()
 
 
-def _generate_placeholder_sentiment() -> pd.DataFrame:
-    """
-    Generate a placeholder sentiment series.
-    This uses a simple rolling correlation between oil returns and a noise signal.
-    It's ONLY used if FRED is completely unavailable.
-    """
+def _generate_placeholder_vix() -> pd.DataFrame:
+    """Placeholder VIX if FRED is unavailable."""
     dates = pd.bdate_range(start=START_DATE, end=END_DATE)
-    np.random.seed(42)  # Reproducible
-    sentiment = np.random.normal(0, 0.3, len(dates)).cumsum()
-    # Normalize to [-1, 1]
-    sentiment = np.clip(sentiment / np.abs(sentiment).max(), -1, 1)
-    df = pd.DataFrame({"sentiment_score": sentiment}, index=dates)
+    df = pd.DataFrame({"vix_close": 20.0}, index=dates) # Default to 20
     df.index.name = "Date"
-    print(f"  Generated {len(df)} placeholder sentiment values")
     return df
 
 
 # ============================================================
-# STEP 4: Generate Holiday Flags
+# STEP 4B: Load FinGPT Sentiment
+# ============================================================
+
+def load_fingpt_sentiment() -> pd.DataFrame:
+    """Load the historical FinGPT sentiment scores (from Colab Phase 2.5)."""
+    print("\n[5/10] Loading FinGPT Historical Sentiment Scores...")
+    csv_path = DATA_DIR / "fingpt_historical_scores.csv"
+    
+    if not csv_path.exists():
+        print("  WARNING: fingpt_historical_scores.csv not found in data/!")
+        print("  You must run the Colab notebook first and place the CSV in data/.")
+        print("  Generating zero-filled placeholder for sentiment.")
+        dates = pd.bdate_range(start=START_DATE, end=END_DATE)
+        df = pd.DataFrame({"sentiment_score": 0.0}, index=dates)
+        df.index.name = "Date"
+        return df
+
+    df = pd.read_csv(csv_path)
+    df["Date"] = pd.to_datetime(df["date"])
+    df = df.set_index("Date").sort_index()
+    # Assume column is 'fingpt_sentiment'
+    df = df.rename(columns={"fingpt_sentiment": "sentiment_score"})
+    
+    print(f"  Loaded {len(df)} sentiment scores from FinGPT")
+    return df[["sentiment_score"]]
+
+
+# ============================================================
+# STEP 5: Download EIA Weekly Crude Oil Inventories
+# ============================================================
+
+def download_eia_inventory() -> pd.DataFrame:
+    """
+    Download US Weekly Crude Oil Ending Stocks from EIA API v2.
+    This is the single most market-moving weekly oil data point.
+    Released every Wednesday by the US Energy Information Administration.
+    """
+    print("\n[6/10] Downloading EIA Weekly Crude Oil Inventories...")
+
+    api_key = EIA_API_KEY or _load_env_key("EIA_API_KEY")
+
+    if not api_key:
+        print("  WARNING: No EIA_API_KEY found.")
+        print("  To fix: Register at https://www.eia.gov/opendata/ and add EIA_API_KEY=your_key to .env")
+        print("  Generating zero-filled placeholder (this feature will be inactive).")
+        dates = pd.bdate_range(start=START_DATE, end=END_DATE)
+        df = pd.DataFrame({"eia_inventory": 0.0, "eia_inventory_change": 0.0}, index=dates)
+        df.index.name = "Date"
+        return df
+
+    try:
+        # EIA API v2 endpoint for weekly petroleum stocks
+        url = "https://api.eia.gov/v2/petroleum/stoc/wstk/data/"
+        params = {
+            "api_key": api_key,
+            "frequency": "weekly",
+            "facets[series][]": "WCESTUS1",  # US Ending Stocks of Crude Oil
+            "data[]": "value",
+            "sort[0][column]": "period",
+            "sort[0][direction]": "asc",
+            "start": START_DATE,
+            "end": END_DATE,
+            "length": 5000,
+        }
+
+        print(f"  Fetching from EIA API v2 (series: WCESTUS1)...")
+        response = requests.get(url, params=params, timeout=30)
+
+        if response.status_code != 200:
+            print(f"  EIA API error: {response.status_code}")
+            print(f"  Falling back to zero-filled placeholder.")
+            dates = pd.bdate_range(start=START_DATE, end=END_DATE)
+            return pd.DataFrame({"eia_inventory": 0.0, "eia_inventory_change": 0.0}, index=dates)
+
+        data = response.json()
+        records = data.get("response", {}).get("data", [])
+
+        if not records:
+            print("  No records returned from EIA API.")
+            dates = pd.bdate_range(start=START_DATE, end=END_DATE)
+            return pd.DataFrame({"eia_inventory": 0.0, "eia_inventory_change": 0.0}, index=dates)
+
+        df = pd.DataFrame(records)
+        df["Date"] = pd.to_datetime(df["period"])
+        df["eia_inventory"] = pd.to_numeric(df["value"], errors="coerce")
+        df = df.set_index("Date").sort_index()
+        df = df[["eia_inventory"]].dropna()
+
+        # Compute week-over-week change (the actual market-moving number)
+        df["eia_inventory_change"] = df["eia_inventory"].diff()
+
+        # Normalize inventory to millions of barrels for readability
+        # EIA reports in thousands of barrels
+        df["eia_inventory"] = df["eia_inventory"] / 1000.0  # Now in millions of barrels
+        df["eia_inventory_change"] = df["eia_inventory_change"] / 1000.0
+
+        print(f"  Downloaded {len(df)} weekly readings")
+        print(f"  Range: {df.index.min().strftime('%Y-%m-%d')} to {df.index.max().strftime('%Y-%m-%d')}")
+        print(f"  Inventory range: {df['eia_inventory'].min():.1f}M - {df['eia_inventory'].max():.1f}M barrels")
+
+        return df[["eia_inventory", "eia_inventory_change"]]
+
+    except Exception as e:
+        print(f"  EIA download failed: {e}")
+        dates = pd.bdate_range(start=START_DATE, end=END_DATE)
+        return pd.DataFrame({"eia_inventory": 0.0, "eia_inventory_change": 0.0}, index=dates)
+
+
+# ============================================================
+# STEP 6: Generate Holiday Flags
 # ============================================================
 
 def generate_holidays(date_index: pd.DatetimeIndex) -> pd.DataFrame:
     """Generate binary holiday flags for each trading day."""
-    print("\n[4/6] Generating holiday flags...")
+    print("\n[7/10] Generating holiday flags...")
 
     if not HAS_HOLIDAYS:
         print("  'holidays' library not installed. Installing...")
@@ -241,11 +359,10 @@ def generate_holidays(date_index: pd.DatetimeIndex) -> pd.DataFrame:
         holidays_lib = holidays
 
     # Global holidays that affect oil markets (per spec Section 3.1)
-    # US, India, China, UK — major oil consuming/producing nations
-    us_holidays = holidays_lib.US(years=range(2007, 2027))
-    india_holidays = holidays_lib.India(years=range(2007, 2027))
-    china_holidays = holidays_lib.China(years=range(2007, 2027))
-    uk_holidays = holidays_lib.UK(years=range(2007, 2027))
+    us_holidays = holidays_lib.US(years=range(2007, 2028))
+    india_holidays = holidays_lib.India(years=range(2007, 2028))
+    china_holidays = holidays_lib.China(years=range(2007, 2028))
+    uk_holidays = holidays_lib.UK(years=range(2007, 2028))
 
     all_holiday_dates = set()
     for h in [us_holidays, india_holidays, china_holidays, uk_holidays]:
@@ -266,7 +383,7 @@ def generate_holidays(date_index: pd.DatetimeIndex) -> pd.DataFrame:
 
 
 # ============================================================
-# STEP 5: Compute Technical Indicators
+# STEP 7: Compute Technical Indicators
 # ============================================================
 
 def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -274,7 +391,7 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     Compute technical indicators from Brent price data.
     These are additional features that help the model learn patterns.
     """
-    print("\n[5/6] Computing technical indicators...")
+    print("\n[8/10] Computing technical indicators...")
 
     close = df["brent_close"]
     high = df["brent_high"]
@@ -315,34 +432,100 @@ def compute_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ============================================================
-# STEP 6: Merge, Normalize, and Save
+# STEP 8: Compute Spreads & Crack Spread
+# ============================================================
+
+def compute_spreads(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute market structure features:
+    1. Brent-WTI spread — regional supply dynamics
+    2. 3-2-1 Crack spread — RIL refining margin (Brent-based)
+
+    RIL Jamnagar produces: Diesel (#1), Gasoline, ATF, Naphtha, LPG
+    The 3-2-1 crack spread (2 bbl gasoline + 1 bbl diesel from 3 bbl crude)
+    directly measures refining profitability.
+
+    When crack spreads widen → refiners buy more crude → upward Brent pressure.
+    When crack spreads narrow → refiners cut runs → downward Brent pressure.
+    """
+    print("\n[9/10] Computing market structure spreads...")
+
+    # Brent-WTI spread
+    if "wti_close" in df.columns:
+        df["brent_wti_spread"] = df["brent_close"] - df["wti_close"]
+        avg_spread = df["brent_wti_spread"].mean()
+        print(f"  Brent-WTI spread: avg=${avg_spread:.2f}/bbl")
+    else:
+        df["brent_wti_spread"] = 0.0
+        print("  WARNING: WTI data missing, Brent-WTI spread set to 0")
+
+    # 3-2-1 Crack Spread (Brent-based, for RIL)
+    # Formula: ((2 * Gasoline_gal * 42) + (1 * HeatingOil_gal * 42) - (3 * Brent_bbl)) / 3
+    # RB=F and HO=F are quoted in $/gallon, BZ=F in $/barrel
+    # 42 gallons per barrel
+    if "gasoline_close" in df.columns and "heating_oil_close" in df.columns:
+        df["crack_spread_321"] = (
+            (2 * df["gasoline_close"] * 42) +
+            (1 * df["heating_oil_close"] * 42) -
+            (3 * df["brent_close"])
+        ) / 3
+        avg_crack = df["crack_spread_321"].mean()
+        print(f"  3-2-1 Crack spread (Brent-based): avg=${avg_crack:.2f}/bbl")
+        print(f"  This is RIL Jamnagar's approximate refining margin")
+    else:
+        df["crack_spread_321"] = 0.0
+        print("  WARNING: Product futures data missing, crack spread set to 0")
+
+    return df
+
+
+# ============================================================
+# STEP 9: Merge, Normalize, and Save
 # ============================================================
 
 def merge_and_save(
     brent: pd.DataFrame,
     dxy: pd.DataFrame,
-    sentiment: pd.DataFrame,
+    wti_products: pd.DataFrame,
+    vix: pd.DataFrame,
+    fingpt: pd.DataFrame,
     holiday_flags: pd.DataFrame,
+    eia_inventory: pd.DataFrame,
 ) -> pd.DataFrame:
     """Merge all data sources, compute Z-scores, and save CSV."""
-    print("\n[6/6] Merging all data and computing Z-scores...")
+    print("\n[10/10] Merging all data and computing Z-scores...")
 
     # Start with Brent as the base (it has the fewest rows)
     merged = brent.copy()
 
-    # Join DXY — forward-fill gaps where DXY has data but Brent doesn't (or vice versa)
+    # Join DXY — forward-fill gaps
     merged = merged.join(dxy, how="left")
     merged["dxy_close"] = merged["dxy_close"].ffill()
 
-    # Join sentiment — forward-fill for days where sentiment wasn't published
-    merged = merged.join(sentiment, how="left")
+    # Join WTI & Products — forward-fill
+    merged = merged.join(wti_products, how="left")
+    for col in ["wti_close", "gasoline_close", "heating_oil_close"]:
+        if col in merged.columns:
+            merged[col] = merged[col].ffill()
+
+    # Join VIX
+    merged = merged.join(vix, how="left")
+    merged["vix_close"] = merged["vix_close"].ffill()
+
+    # Join FinGPT sentiment
+    merged = merged.join(fingpt, how="left")
     merged["sentiment_score"] = merged["sentiment_score"].ffill().fillna(0.0)
 
     # Join holidays
     merged = merged.join(holiday_flags, how="left")
     merged["holiday_flag"] = merged["holiday_flag"].fillna(0).astype(int)
 
-    # Drop any rows where brent_close is still NaN (shouldn't happen but be safe)
+    # Join EIA inventory — forward-fill weekly data to daily
+    merged = merged.join(eia_inventory, how="left")
+    merged["eia_inventory"] = merged["eia_inventory"].ffill().fillna(0.0)
+    merged["eia_inventory_change"] = merged["eia_inventory_change"].ffill().fillna(0.0)
+
+    # Drop any rows where brent_close is still NaN
     merged = merged.dropna(subset=["brent_close"])
 
     print(f"  Merged dataset: {len(merged)} rows")
@@ -350,6 +533,9 @@ def merge_and_save(
 
     # Compute technical indicators
     merged = compute_technical_indicators(merged)
+
+    # Compute spreads & crack spread
+    merged = compute_spreads(merged)
 
     # Compute Z-Scores (per spec: 30-day rolling window)
     print("\n  Computing 30-day rolling Z-scores...")
@@ -372,8 +558,14 @@ def merge_and_save(
         # Raw prices (for reference and target computation)
         "brent_open", "brent_high", "brent_low", "brent_close", "brent_volume",
         "dxy_close",
+        # WTI & Products (for reference, used to compute spreads)
+        "wti_close", "gasoline_close", "heating_oil_close",
         # Categorical / external features
-        "holiday_flag", "sentiment_score",
+        "holiday_flag", "vix_close", "sentiment_score",
+        # NEW: Market structure features
+        "brent_wti_spread", "crack_spread_321",
+        # NEW: EIA inventory
+        "eia_inventory", "eia_inventory_change",
         # Z-Score normalized features (model inputs)
         "z_brent", "z_dxy",
         # Technical indicators
@@ -395,9 +587,12 @@ def merge_and_save(
     print(f"  Columns: {len(merged.columns)}")
     print(f"  Columns: {list(merged.columns)}")
 
-    # Print summary statistics
-    print("\n  === Summary Statistics ===")
-    print(merged.describe().to_string())
+    # Print summary statistics for new features
+    print("\n  === New Feature Summary ===")
+    for col in ["brent_wti_spread", "crack_spread_321", "eia_inventory", "eia_inventory_change"]:
+        if col in merged.columns:
+            s = merged[col]
+            print(f"  {col:<25}: mean={s.mean():>8.2f}, std={s.std():>8.2f}, min={s.min():>8.2f}, max={s.max():>8.2f}")
 
     return merged
 
@@ -408,8 +603,9 @@ def merge_and_save(
 
 def main():
     print("=" * 60)
-    print("  AGENT-B: Training Data Generation")
-    print("  This creates the CSV you'll upload to Kaggle")
+    print("  AGENT-B: Training Data Generation v2")
+    print("  Now with: Brent-WTI spread, Crack spread, EIA inventory")
+    print("  Now with: True FinGPT Sentiment & Independent VIX")
     print("=" * 60)
 
     # Step 1: Download Brent
@@ -418,20 +614,29 @@ def main():
     # Step 2: Download DXY
     dxy = download_dxy()
 
-    # Step 3: Download Sentiment
-    sentiment = download_sentiment()
+    # Step 3: Download WTI + Products
+    wti_products = download_wti_and_products()
 
-    # Step 4: Generate Holiday Flags
+    # Step 4: Download VIX
+    vix = download_vix()
+
+    # Step 5: Load FinGPT
+    fingpt = load_fingpt_sentiment()
+
+    # Step 6: Download EIA Inventory
+    eia_inventory = download_eia_inventory()
+
+    # Step 7: Generate Holiday Flags
     holiday_flags = generate_holidays(brent.index)
 
-    # Step 5-6: Merge, compute indicators & Z-scores, save
-    merged = merge_and_save(brent, dxy, sentiment, holiday_flags)
+    # Steps 8-10: Merge, compute indicators, spreads, Z-scores, save
+    merged = merge_and_save(brent, dxy, wti_products, vix, fingpt, holiday_flags, eia_inventory)
 
     print("\n" + "=" * 60)
     print("  DONE! Next steps:")
     print("  1. Check the CSV at: data/historical_features.csv")
     print("  2. Upload it to Kaggle as a new Dataset")
-    print("  3. Run the training notebook on Kaggle GPU")
+    print("  3. Run the v7 training notebook on Kaggle GPU")
     print("=" * 60)
 
 

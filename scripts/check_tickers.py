@@ -1,30 +1,23 @@
-"""Quick script to verify earliest available data for BZ=F and DX-Y.NYB"""
 import yfinance as yf
 
-print("Downloading BZ=F (Brent Crude Futures)...")
-bz = yf.download("BZ=F", start="1900-01-01", end="2026-06-15", progress=False)
-print(f"  Earliest: {bz.index.min().strftime('%Y-%m-%d')}")
-print(f"  Latest:   {bz.index.max().strftime('%Y-%m-%d')}")
-print(f"  Total rows: {len(bz)}")
-print(f"  First 5 rows:")
-print(bz.head(5)[["Close"]].to_string())
-print()
+tickers = {
+    "BZ=F": "Brent Front Month",
+    "CL=F": "WTI Front Month",
+    "RB=F": "RBOB Gasoline",
+    "HO=F": "Heating Oil (Diesel proxy)",
+}
 
-print("Downloading DX-Y.NYB (US Dollar Index / DXY)...")
-dx = yf.download("DX-Y.NYB", start="1900-01-01", end="2026-06-15", progress=False)
-print(f"  Earliest: {dx.index.min().strftime('%Y-%m-%d')}")
-print(f"  Latest:   {dx.index.max().strftime('%Y-%m-%d')}")
-print(f"  Total rows: {len(dx)}")
-print(f"  First 5 rows:")
-print(dx.head(5)[["Close"]].to_string())
-print()
+for t, name in tickers.items():
+    df = yf.download(t, start="2007-01-01", end="2026-06-20", progress=False)
+    if df.empty:
+        print(f"{t} ({name}): NO DATA")
+    else:
+        print(f"{t} ({name}): {df.index.min().strftime('%Y-%m-%d')} to {df.index.max().strftime('%Y-%m-%d')} | {len(df)} rows")
 
-# Check overlap
-overlap_start = max(bz.index.min(), dx.index.min())
-overlap_end = min(bz.index.max(), dx.index.max())
-print(f"=== OVERLAP (usable training range) ===")
-print(f"  Start: {overlap_start.strftime('%Y-%m-%d')}")
-print(f"  End:   {overlap_end.strftime('%Y-%m-%d')}")
-
-bz_overlap = bz.loc[overlap_start:overlap_end]
-print(f"  BZ=F rows in range: {len(bz_overlap)}")
+# Check BZ2=F for term structure
+for t2 in ["BZ2=F", "BZH25.NYM", "QO=F"]:
+    df2 = yf.download(t2, start="2007-01-01", end="2026-06-20", progress=False)
+    if df2.empty:
+        print(f"{t2} (2nd month Brent): NO DATA")
+    else:
+        print(f"{t2} (2nd month Brent): {df2.index.min().strftime('%Y-%m-%d')} to {df2.index.max().strftime('%Y-%m-%d')} | {len(df2)} rows")
