@@ -514,7 +514,30 @@ def merge_and_save(
 
     # Join FinGPT sentiment
     merged = merged.join(fingpt, how="left")
-    merged["sentiment_score"] = merged["sentiment_score"].ffill().fillna(0.0)
+    
+    # Bug #1 Fix: Sentiment Decay
+    # Instead of ffill() which makes old news last forever, we decay the score 
+    # towards 0 (neutral) over 5 trading days.
+    sent_vals = merged["sentiment_score"].values
+    decayed_sent = np.zeros_like(sent_vals)
+    last_score = 0.0
+    days_since_news = 999
+    
+    for i in range(len(sent_vals)):
+        if not np.isnan(sent_vals[i]):
+            last_score = sent_vals[i]
+            days_since_news = 0
+            decayed_sent[i] = last_score
+        else:
+            days_since_news += 1
+            if days_since_news <= 5:
+                # Linear decay over 5 days: day 1=0.8, day 2=0.6, day 3=0.4, day 4=0.2, day 5=0
+                decay_factor = max(0.0, 1.0 - (days_since_news / 5.0))
+                decayed_sent[i] = last_score * decay_factor
+            else:
+                decayed_sent[i] = 0.0
+                
+    merged["sentiment_score"] = decayed_sent
 
     # Join holidays
     merged = merged.join(holiday_flags, how="left")
