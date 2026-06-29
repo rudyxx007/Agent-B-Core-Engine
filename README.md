@@ -1,130 +1,113 @@
-# 🛢️ Project Agent-B: Core Engine
+<div align="center">
+  <h1>🛢️ Agent-B: Core Engine</h1>
+  <p><em>Autonomous Procurement Intelligence for Reliance Industries Limited</em></p>
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-EE4C2C.svg)](https://pytorch.org/)
-[![Modal](https://img.shields.io/badge/Modal-Serverless%20GPU-000000.svg)](https://modal.com/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg)](https://supabase.com/)
-[![CrewAI](https://img.shields.io/badge/CrewAI-Agentic%20Orchestration-FF6A00.svg)](https://www.crewai.com/)
-[![FinGPT](https://img.shields.io/badge/FinGPT-Financial%20NLP-brightgreen.svg)](https://github.com/AI4Finance-Foundation/FinGPT)
+  [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge&logo=python)](https://www.python.org/)
+  [![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-EE4C2C.svg?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
+  [![Modal](https://img.shields.io/badge/Modal-Serverless%20GPU-000000.svg?style=for-the-badge)](https://modal.com/)
+  [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg?style=for-the-badge&logo=supabase)](https://supabase.com/)
+  [![CrewAI](https://img.shields.io/badge/CrewAI-Orchestration-FF6A00.svg?style=for-the-badge)](https://www.crewai.com/)
+</div>
 
-> **Agent-B** is an enterprise-grade, fully automated predictive AI pipeline that forecasts primary and secondary risk metrics for Brent Crude Oil continuous futures contracts (Ticker: `BZ=F`). 
+<br/>
 
-This project was engineered from the strategic perspective of a **Corporate Procurement Officer** at a major oil refiner (e.g., Reliance Industries Limited), aiming to minimize raw material acquisition costs using state-of-the-art Deep Learning, Large Language Models (LLMs), and Agentic frameworks—all built on a **100% zero-cost open-source architecture**.
+> **The Problem:** RIL buys billions of dollars of Brent crude oil every year. A buying decision made one week too early—or too late—can cost millions in lost refining margins. Traditional commodity forecasting relies on lagging technical indicators and human bias.
+>
+> **The Solution (Agent-B):** A 100% automated, zero-cost AI pipeline that wakes up every morning, reads the global news, analyzes 150 days of macro-economic data, and mathematically predicts the exact dollar-value risk of buying oil today versus next month.
 
----
-
-## 🎯 Executive Summary (Business Impact)
-
-Commodity procurement teams traditionally rely on lagging technical indicators and delayed analyst reports. **Agent-B** solves this by autonomously executing a daily intelligence pipeline:
-1. **Scrapes** real-time macroeconomic news and geopolitical developments.
-2. **Quantifies** the fundamental market sentiment using a fine-tuned financial LLM (`FinGPT`).
-3. **Fuses** this sentiment with 150 days of structural market data (DXY, VIX, Holiday Flags, EIA Inventories, Crack Spreads).
-4. **Predicts** future price distributions (1-Day, 1-Month, 3-Month horizons) using a cutting-edge multivariate time-series model (`iTransformer`).
-5. **Recommends** an actionable procurement strategy (Accelerate, Delay, or Stagger) based on quantitative risk thresholds.
-
-*Note: This repository contains the **Core AI/ML Engine**. The frontend presentation layer can be found here:* [**Agent-B-UI Dashboard**](https://github.com/rudyxx007/Agent-B-UI)
+*Note: This repository contains the **Core Backend AI/ML Engine**. To see the stunning Next.js Dark-Mode UI where the magic is visualized, visit the [**Agent-B-UI Dashboard**](https://github.com/rudyxx007/Agent-B-UI).*
 
 ---
 
-## 🧠 Core Machine Learning Innovations
+## ⚡ The "Secret Sauce" (Why This Isn't Just Another Jupyter Notebook)
 
-### 1. Quantile Regression (Pinball Loss)
-Instead of predicting a single, deterministic point estimate (which is effectively useless for institutional risk management), the `iTransformer` engine was trained using **Pinball Loss**. The model outputs three distinct probability percentiles simultaneously for every time horizon:
-* **10th Percentile (Optimal Buying Zone):** The statistical floor; the bullish cost scenario.
-* **50th Percentile (Expected Baseline):** The median statistical expectation.
-* **90th Percentile (Maximum Risk Exposure):** The statistical ceiling; the worst-case cost spike.
+Recruiters and Engineers: This is not a static CSV dataset project. This is a fully containerized, serverless production pipeline. 
 
-### 2. Adaptive Rolling Z-Score Normalization
-To prevent neural network "amnesia" and preserve long-term macro trends without losing scale, raw dollar prices are dynamically converted into 30-day rolling Z-Scores before tensor injection. Post-inference, predictions are mathematically un-normalized back into exact dollar amounts for the procurement dashboard.
+### 👁️ The Eyes: Agentic Web Scraping (`CrewAI` + `ScrapeGraphAI`)
+Instead of just looking at numbers, Agent-B reads the news. A `Qwen3.5-0.8B` LLM orchestrates a CrewAI workflow to hunt down the latest Yahoo Finance articles on Brent crude. It deploys ScrapeGraphAI to read the full context of the articles, parsing out geopolitical risks and supply chain disruptions.
 
-### 3. LLM-Driven Feature Engineering (CrewAI & FinGPT)
-A local `Qwen3.5-0.8B` orchestrator controls a CrewAI framework to deploy ScrapeGraphAI for context-preserving web scraping of global oil news. The extracted text is scored by `FinGPT-Llama3-8B-LoRA` to generate a bounded scalar sentiment vector [-1.0 to 1.0], perfectly translating unstructured human geopolitics into a structured mathematical tensor.
+### 🧠 The Intuition: Financial Semantic Scoring (`FinGPT`)
+We don't rely on generic sentiment analyzers. The scraped news is fed into a specialized financial LLM (`FinGPT-Llama-3-8B-LoRA`). It reads the context and outputs a strict mathematical scalar between `-1.0` (Bearish Panic) and `+1.0` (Bullish Euphoria), perfectly translating human geopolitics into a structured machine-learning tensor.
 
----
+### 🔮 The Engine: Quantile Time-Series Forecasting (`iTransformer`)
+Agent-B doesn't just guess a single price. Using an `iTransformer` architecture trained with **Pinball Loss (Quantile Regression)**, it predicts the *distribution* of future prices. For every 1-Day, 1-Month, and 3-Month horizon, it calculates:
+- 📉 **The 10th Percentile:** The Optimal Buying Zone.
+- 🎯 **The 50th Percentile:** The Expected Baseline.
+- 📈 **The 90th Percentile:** The Maximum Risk Exposure.
 
-## 🏗️ Architecture & Daily Execution Flow
-
-The entire pipeline is containerized and hosted on **Modal**. A scheduled Cron job triggers the serverless execution every morning:
-
-1. **Agentic Orchestration:** CrewAI orchestrates the pipeline, commanding agents to target `BZ=F` on Yahoo Finance to extract current metadata and news URLs.
-2. **Context Scraping:** ScrapeGraphAI navigates to URLs, compressing full-page text into structured JSON abstracts while preserving critical context (e.g., "despite", "however").
-3. **Semantic Scoring:** FinGPT evaluates the JSON abstract and outputs a scalar sentiment score.
-4. **Tensor Assembly:** Live closing prices (DXY, Brent, VIX) and macro indicators are aggregated, normalized, and concatenated with the FinGPT score into a `[1, 90, 12]` PyTorch tensor.
-5. **Inference Engine:** The `iTransformer` model (weights hosted on Hugging Face) executes a forward pass on the tensor, outputting the multi-horizon quantiles, predicted volatility, and Moving Average (MA) crossover flags.
-6. **Data Warehouse:** Raw dollar predictions are securely logged to a **Supabase (PostgreSQL)** database.
-7. **UI Delivery:** The Next.js dashboard securely queries Supabase to dynamically render the probability cones and procurement recommendations.
+### 🛡️ The Memory: Adaptive Rolling Z-Scores
+To prevent neural network "amnesia" over decades of data, raw dollar prices are dynamically converted into 30-day rolling Z-Scores before hitting the PyTorch tensor. The backend mathematically reconstructs them back into actual dollar amounts just milliseconds before logging them to the database.
 
 ---
 
-## 🛠️ Technology Stack
+## ⚙️ The Daily Serverless Ballet
 
-| Domain | Technology / Tool |
-| :--- | :--- |
-| **Time-Series Forecasting** | `PyTorch`, `iTransformer` (Multivariate Attention) |
-| **Agentic Orchestration** | `CrewAI`, `llama-cpp-python` |
-| **LLMs (Local / GGUF)** | `Qwen3.5-0.8B` (Orchestrator), `FinGPT-Llama-3-8B` (Scorer) |
-| **Cloud Compute & Cron** | `Modal` (Serverless GPU) |
-| **Model Registry** | `Hugging Face Hub` |
-| **Database** | `Supabase` (PostgreSQL) |
+Hosted on **Modal**, a scheduled Cron job triggers this exact sequence every single morning:
+
+1. **Wake Up:** Serverless GPU container spins up.
+2. **Read the Room:** Agents scrape and score global news (FinGPT).
+3. **Crunch the Numbers:** Live closing prices (DXY, Brent, VIX) and macro indicators are aggregated and normalized into a `[1, 90, 12]` PyTorch tensor.
+4. **See the Future:** The `iTransformer` model (pulled from Hugging Face) runs the forward pass.
+5. **Log the Truth:** Predictions are un-normalized and pushed to **Supabase (PostgreSQL)**.
+6. **Sleep:** Container gracefully shuts down, costing exactly $0.00 while idle.
 
 ---
 
-## 📁 Repository Structure
+## 📂 Codebase Geography
 
 ```text
 Agent-B-Core-Engine/
 ├── scripts/
-│   └── modal_app/             # Production Serverless Code
-│       ├── main.py            # Modal Cron entrypoint & pipeline definition
-│       ├── agents.py          # CrewAI orchestrator & FinGPT tool definition
-│       ├── data_fetcher.py    # Yahoo Finance/FRED scraping & Tensor assembly
-│       ├── inference.py       # iTransformer architecture & Hugging Face weight loading
-│       └── db.py              # Supabase PostgreSQL insertion logic
-├── notebooks/                 # R&D, Walk-Forward Validation, & Model Training
-│   ├── agent-b-core.ipynb     # Kaggle training notebook (iTransformer)
-│   └── fingpt-scoring.ipynb   # Historical FinGPT sentiment generation
-├── .env                       # Secrets (Supabase, Hugging Face) - GitIgnored
-└── README.md                  # You are here
+│   └── modal_app/             # The Production Cloud Environment
+│       ├── main.py            # Cron entrypoint & pipeline definition
+│       ├── agents.py          # CrewAI orchestrator & FinGPT logic
+│       ├── data_fetcher.py    # Yahoo/FRED scraping & Tensor assembly
+│       ├── inference.py       # iTransformer architecture & HF loading
+│       └── db.py              # Supabase database insertion
+├── notebooks/                 # The R&D Lab
+│   ├── agent-b-core.ipynb     # Kaggle dual-T4 training & Walk-Forward Validation
+│   └── fingpt-scoring.ipynb   # Historical LLM sentiment backtesting
+└── .env                       # Secrets (GitIgnored)
 ```
 
 ---
 
-## 🚀 How to Run Locally
+## 🚀 Spin It Up Locally
 
-### 1. Environment Setup
-Create a `.env` file in the root directory:
-```env
-SUPABASE_URL=your_supabase_url
-SUPABASE_SECRET_KEY=your_supabase_service_role_key
-HF_TOKEN=your_hugging_face_token
+Want to see the pipeline run in your own terminal? 
+
+**1. Clone & Env Setup**
+```bash
+git clone https://github.com/rudyxx007/Agent-B-Core-Engine.git
+cd Agent-B-Core-Engine
+# Create a .env file with SUPABASE_URL, SUPABASE_SECRET_KEY, and HF_TOKEN
 ```
 
-### 2. Install Dependencies
-Ensure you have `modal` installed and authenticated on your local machine:
+**2. Modal Auth**
 ```bash
 pip install modal
 modal setup
 ```
 
-### 3. Execute the Pipeline
-You can trigger the entire cloud pipeline from your local terminal. Modal will spin up the remote container, execute the agents, run the PyTorch inference, and log to your database:
+**3. Run the Daily Pipeline (Test Mode)**
 ```bash
 modal run scripts/modal_app/main.py
 ```
 
-### 4. Deploy the Cron Job
-To permanently deploy the pipeline to run automatically every morning on the cloud:
+**4. Deploy the Cloud Cron Job**
 ```bash
 modal deploy scripts/modal_app/main.py
 ```
 
 ---
 
-## 🔮 Future Roadmap (Phase 5)
+## 🔭 What's Next? (Phase 5)
 
-* **Market Regime Detection (Hidden Markov Models):** Integrating HMMs to mathematically classify the market into "Regimes" (e.g., High Volatility Panic vs. Low Volatility Bull), allowing the neural network to dynamically adjust its sensitivity to news sentiment.
-* **Volume Tranching Engine:** Moving beyond binary "Accelerate/Delay" recommendations to specific volume splits (e.g., "Procure 30% today, float 70% to 1-Month horizon") based on predicted volatility spreads.
-* **Continuous Online Learning:** Implementing an automated daily backward-pass training loop on Modal to fine-tune the model weights with the previous day's actuals before predicting the next day.
+* **Market Regime Detection:** Integrating Hidden Markov Models (HMMs) to classify the market into "Regimes" (e.g., Panic vs. Bull), teaching the neural network to dynamically adjust its sensitivity.
+* **Volume Tranching:** Moving beyond binary "Buy/Wait" recommendations to suggest specific volume splits (e.g., "Procure 30% today, float 70% to 1-Month").
+* **Online Learning:** Adding an automated daily backward-pass training loop to fine-tune the model weights on the cloud before predicting the next day.
 
----
-*Architected and developed by [rudyxx007](https://github.com/rudyxx007).*
+<br/>
+<div align="center">
+  <i>Architected and developed by <a href="https://github.com/rudyxx007">rudyxx007</a> for Jio Platforms Limited</i>
+</div>
