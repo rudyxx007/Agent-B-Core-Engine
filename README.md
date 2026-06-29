@@ -2,16 +2,9 @@
   <h1>🛢️ Agent-B: Core Engine</h1>
   <p><em>Autonomous Procurement Intelligence for Reliance Industries Limited</em></p>
 
-  [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?style=for-the-badge&logo=python)](https://www.python.org/)
-  [![PyTorch](https://img.shields.io/badge/PyTorch-Deep%20Learning-EE4C2C.svg?style=for-the-badge&logo=pytorch)](https://pytorch.org/)
-  [![Modal](https://img.shields.io/badge/Modal-Serverless%20GPU-000000.svg?style=for-the-badge)](https://modal.com/)
-  [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E.svg?style=for-the-badge&logo=supabase)](https://supabase.com/)
-  [![CrewAI](https://img.shields.io/badge/CrewAI-Orchestration-FF6A00.svg?style=for-the-badge)](https://www.crewai.com/)
-</div>
-
 <br/>
 
-> **The Problem:** RIL buys billions of dollars of Brent crude oil every year. A buying decision made one week too early—or too late—can cost millions in lost refining margins. Traditional commodity forecasting relies on lagging technical indicators and human bias.
+> **The Problem:** RIL buys billions of dollars of Brent crude oil every year. A buying decision made one week too early, or too late, can cost millions in lost refining margins. Traditional commodity forecasting relies on lagging technical indicators and human bias.
 >
 > **The Solution (Agent-B):** A 100% automated, zero-cost AI pipeline that wakes up every morning, reads the global news, analyzes 150 days of macro-economic data, and mathematically predicts the exact dollar-value risk of buying oil today versus next month.
 
@@ -21,21 +14,26 @@
 
 ## ⚡ The "Secret Sauce" (Why This Isn't Just Another Jupyter Notebook)
 
-Recruiters and Engineers: This is not a static CSV dataset project. This is a fully containerized, serverless production pipeline. 
+Recruiters and Engineers: This is not a static CSV dataset project. This is a fully containerized, serverless production pipeline.
 
 ### 👁️ The Eyes: Agentic Web Scraping (`CrewAI` + `ScrapeGraphAI`)
+
 Instead of just looking at numbers, Agent-B reads the news. A `Qwen3.5-0.8B` LLM orchestrates a CrewAI workflow to hunt down the latest Yahoo Finance articles on Brent crude. It deploys ScrapeGraphAI to read the full context of the articles, parsing out geopolitical risks and supply chain disruptions.
 
 ### 🧠 The Intuition: Financial Semantic Scoring (`FinGPT`)
+
 We don't rely on generic sentiment analyzers. The scraped news is fed into a specialized financial LLM (`FinGPT-Llama-3-8B-LoRA`). It reads the context and outputs a strict mathematical scalar between `-1.0` (Bearish Panic) and `+1.0` (Bullish Euphoria), perfectly translating human geopolitics into a structured machine-learning tensor.
 
 ### 🔮 The Engine: Quantile Time-Series Forecasting (`iTransformer`)
+
 Agent-B doesn't just guess a single price. Using an `iTransformer` architecture trained with **Pinball Loss (Quantile Regression)**, it predicts the *distribution* of future prices. For every 1-Day, 1-Month, and 3-Month horizon, it calculates:
+
 - 📉 **The 10th Percentile:** The Optimal Buying Zone.
 - 🎯 **The 50th Percentile:** The Expected Baseline.
 - 📈 **The 90th Percentile:** The Maximum Risk Exposure.
 
 ### 🛡️ The Memory: Adaptive Rolling Z-Scores
+
 To prevent neural network "amnesia" over decades of data, raw dollar prices are dynamically converted into 30-day rolling Z-Scores before hitting the PyTorch tensor. The backend mathematically reconstructs them back into actual dollar amounts just milliseconds before logging them to the database.
 
 ---
@@ -74,9 +72,10 @@ Agent-B-Core-Engine/
 
 ## 🚀 Spin It Up Locally
 
-Want to see the pipeline run in your own terminal? 
+Want to see the pipeline run in your own terminal?
 
 **1. Clone & Env Setup**
+
 ```bash
 git clone https://github.com/rudyxx007/Agent-B-Core-Engine.git
 cd Agent-B-Core-Engine
@@ -84,17 +83,20 @@ cd Agent-B-Core-Engine
 ```
 
 **2. Modal Auth**
+
 ```bash
 pip install modal
 modal setup
 ```
 
 **3. Run the Daily Pipeline (Test Mode)**
+
 ```bash
 modal run scripts/modal_app/main.py
 ```
 
 **4. Deploy the Cloud Cron Job**
+
 ```bash
 modal deploy scripts/modal_app/main.py
 ```
